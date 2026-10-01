@@ -37,7 +37,15 @@ export type JefAgentResult = {
   toolActivities: JefToolActivity[]
   provider: { code: 'openrouter'; model: string }
   rounds: number
+  usage: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    costUsd: number
+    costSource: 'openrouter' | 'estimate'
+  }
 }
+
 
 export type ToolDefinition = {
   name: string

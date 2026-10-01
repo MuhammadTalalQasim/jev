@@ -37,6 +37,8 @@ export async function POST(request: Request) {
       provider: result.provider,
       rounds: result.rounds,
       requestTimeMs,
+      usage: result.usage,
+      costUsd: result.usage.costUsd,
     })
   } catch (error) {
     console.error('[jef/api]', error instanceof Error ? error.message : error)

@@ -8,6 +8,7 @@ import type {
   JefClientMessage,
   JefToolActivity,
 } from './types'
+import { addUsage, emptyUsage, estimateCostUsd } from './usage'
 
 export class JefAgentError extends Error {
   status: number
@@ -25,6 +26,18 @@ function toHistory(history: JefClientMessage[]): JefChatMessage[] {
     .filter((m) => typeof m.content === 'string' && m.content.trim())
     .slice(-20)
     .map((m) => ({ role: m.role, content: m.content.trim() }))
+}
+
+function finalizeUsage(model: string, usage: ReturnType<typeof emptyUsage>) {
+  const hasNativeCost = typeof usage.costUsd === 'number'
+  const costUsd = estimateCostUsd(model, usage)
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+    costUsd,
+    costSource: hasNativeCost ? ('openrouter' as const) : ('estimate' as const),
+  }
 }
 
 /**
@@ -59,6 +72,7 @@ export async function runJefAgent(input: {
 
   const toolActivities: JefToolActivity[] = []
   let rounds = 0
+  let usage = emptyUsage()
 
   while (rounds < config.maxToolRounds) {
     rounds += 1
@@ -79,6 +93,8 @@ export async function runJefAgent(input: {
       )
     }
 
+    usage = addUsage(usage, completion.usage)
+
     const assistant = completion.message
     messages.push({
       role: 'assistant',
@@ -97,6 +113,7 @@ export async function runJefAgent(input: {
         toolActivities,
         provider: { code: 'openrouter', model: config.openRouter.model },
         rounds,
+        usage: finalizeUsage(config.openRouter.model, usage),
       }
     }
 

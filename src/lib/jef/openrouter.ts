@@ -1,5 +1,6 @@
 import type { JefConfig } from './config'
 import type { JefChatMessage, JefToolCall, OpenAiTool } from './types'
+import { parseOpenRouterUsage, type TokenUsage } from './usage'
 
 export type OpenRouterResult = {
   message: {
@@ -8,6 +9,7 @@ export type OpenRouterResult = {
     tool_calls?: JefToolCall[]
   }
   finishReason: string | null
+  usage: TokenUsage
 }
 
 /**
@@ -35,6 +37,8 @@ export async function openRouterChatCompletion(input: {
     model: config.model,
     messages: input.messages,
     temperature: input.temperature ?? 0.2,
+    // Ask OpenRouter to include native cost in the response when available.
+    usage: { include: true },
   }
   if (input.maxTokens) body.max_tokens = input.maxTokens
   if (input.tools?.length) {
@@ -86,5 +90,6 @@ export async function openRouterChatCompletion(input: {
       tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : undefined,
     },
     finishReason: choice?.finish_reason ?? null,
+    usage: parseOpenRouterUsage(json),
   }
 }

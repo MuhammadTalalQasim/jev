@@ -18,6 +18,9 @@ type ChatMessage = {
   timestamp: string
   /** How long the request took, in milliseconds. */
   requestTimeMs?: number
+  /** Estimated or reported request cost in USD. */
+  costUsd?: number
+  totalTokens?: number
   toolActivities?: ToolActivity[]
   isError?: boolean
   isLoading?: boolean
@@ -42,6 +45,30 @@ function formatRequestTime(ms?: number) {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return null
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(ms >= 10_000 ? 0 : 1)}s`
+}
+
+function formatCostUsd(cost?: number) {
+  if (cost == null || !Number.isFinite(cost) || cost < 0) return null
+  if (cost === 0) return "$0.00"
+  if (cost < 0.0001) return `$${cost.toFixed(6)}`
+  if (cost < 0.01) return `$${cost.toFixed(4)}`
+  if (cost < 1) return `$${cost.toFixed(3)}`
+  return `$${cost.toFixed(2)}`
+}
+
+function formatMeta(m: ChatMessage) {
+  if (m.role !== "assistant" || m.isLoading) {
+    return formatTime(m.timestamp)
+  }
+  const parts = [formatTime(m.timestamp)]
+  const duration = formatRequestTime(m.requestTimeMs)
+  const cost = formatCostUsd(m.costUsd)
+  if (duration) parts.push(duration)
+  if (cost) parts.push(cost)
+  if (typeof m.totalTokens === "number" && m.totalTokens > 0) {
+    parts.push(`${m.totalTokens.toLocaleString()} tok`)
+  }
+  return parts.join(" · ")
 }
 
 function renderContent(text: string) {
@@ -118,6 +145,14 @@ export function JefChat() {
       const clientMs = Math.round(performance.now() - startedAt)
       const requestTimeMs =
         typeof data.requestTimeMs === "number" ? data.requestTimeMs : clientMs
+      const costUsd =
+        typeof data.costUsd === "number"
+          ? data.costUsd
+          : typeof data.usage?.costUsd === "number"
+            ? data.usage.costUsd
+            : undefined
+      const totalTokens =
+        typeof data.usage?.totalTokens === "number" ? data.usage.totalTokens : undefined
       const repliedAt = new Date().toISOString()
 
       if (!res.ok) {
@@ -132,6 +167,8 @@ export function JefChat() {
                   content: msg,
                   timestamp: repliedAt,
                   requestTimeMs,
+                  costUsd,
+                  totalTokens,
                 }
               : m
           )
@@ -149,6 +186,8 @@ export function JefChat() {
                 content: data.answer || "I couldn't find an answer.",
                 timestamp: repliedAt,
                 requestTimeMs,
+                costUsd,
+                totalTokens,
                 toolActivities: Array.isArray(data.toolActivities)
                   ? data.toolActivities
                   : [],
@@ -295,12 +334,9 @@ export function JefChat() {
                       renderContent(m.content)
                     )}
                   </div>
-                  <span className="px-1 text-[11px] text-[var(--muted)]">
-                    {formatTime(m.timestamp)}
-                    {m.role === "assistant" && !m.isLoading && formatRequestTime(m.requestTimeMs)
-                      ? ` · ${formatRequestTime(m.requestTimeMs)}`
-                      : ""}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[11px] text-[var(--muted)]">
+                    <span>{formatMeta(m)}</span>
+                  </div>
                 </div>
               </div>
             ))
