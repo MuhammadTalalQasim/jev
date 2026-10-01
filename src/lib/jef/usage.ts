@@ -40,6 +40,8 @@ export function parseOpenRouterUsage(json: any): TokenUsage {
  * Prices are approximate USD per 1M tokens for common chat models.
  */
 const MODEL_RATES: Record<string, { input: number; output: number }> = {
+  'jev-1.13': { input: 0.042, output: 0 },
+  'typesafe/jev-1.13': { input: 0.042, output: 0 },
   'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
   'openai/gpt-4o': { input: 2.5, output: 10 },
   'openai/gpt-4.1-mini': { input: 0.4, output: 1.6 },
@@ -50,7 +52,8 @@ const MODEL_RATES: Record<string, { input: number; output: number }> = {
 
 export function estimateCostUsd(model: string, usage: TokenUsage): number {
   if (typeof usage.costUsd === 'number') return usage.costUsd
-  const rates = MODEL_RATES[model] || { input: 0.15, output: 0.6 }
+  const short = model.includes('/') ? model.split('/').pop() || model : model
+  const rates = MODEL_RATES[model] || MODEL_RATES[short] || { input: 0.15, output: 0.6 }
   return (usage.promptTokens / 1_000_000) * rates.input + (usage.completionTokens / 1_000_000) * rates.output
 }
 
