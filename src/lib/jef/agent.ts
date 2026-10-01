@@ -6,6 +6,7 @@ import type {
   JefAgentResult,
   JefChatMessage,
   JefClientMessage,
+  JefTiming,
   JefToolActivity,
 } from './types'
 import { addUsage, emptyUsage, estimateCostUsd } from './usage'
@@ -40,6 +41,14 @@ function finalizeUsage(model: string, usage: ReturnType<typeof emptyUsage>) {
   }
 }
 
+function buildTiming(startedAt: number, apiMs: number, toolsMs: number): JefTiming {
+  return {
+    apiMs: Math.max(0, Math.round(apiMs)),
+    toolsMs: Math.max(0, Math.round(toolsMs)),
+    jefMs: Math.max(0, Math.round(Date.now() - startedAt)),
+  }
+}
+
 /**
  * Tool-calling loop:
  * User → OpenRouter → (tool call → Tejarify execute → tool result → OpenRouter)* → final answer
@@ -50,6 +59,10 @@ export async function runJefAgent(input: {
 }): Promise<JefAgentResult> {
   const message = input.message.trim()
   if (!message) throw new JefAgentError('Message is required', 400)
+
+  const startedAt = Date.now()
+  let apiMs = 0
+  let toolsMs = 0
 
   let config
   try {
@@ -78,6 +91,7 @@ export async function runJefAgent(input: {
     rounds += 1
 
     let completion
+    const apiStarted = Date.now()
     try {
       completion = await openRouterChatCompletion({
         config: config.openRouter,
@@ -91,6 +105,8 @@ export async function runJefAgent(input: {
         error instanceof Error ? error.message : 'OpenRouter request failed',
         502
       )
+    } finally {
+      apiMs += Date.now() - apiStarted
     }
 
     usage = addUsage(usage, completion.usage)
@@ -114,6 +130,7 @@ export async function runJefAgent(input: {
         provider: { code: 'openrouter', model: config.openRouter.model },
         rounds,
         usage: finalizeUsage(config.openRouter.model, usage),
+        timing: buildTiming(startedAt, apiMs, toolsMs),
       }
     }
 
@@ -163,8 +180,10 @@ export async function runJefAgent(input: {
         continue
       }
 
+      const toolStarted = Date.now()
       try {
         const result = await tool.execute(args)
+        toolsMs += Date.now() - toolStarted
         toolActivities.push({
           toolCallId,
           toolName,
@@ -183,6 +202,7 @@ export async function runJefAgent(input: {
           }),
         })
       } catch (error) {
+        toolsMs += Date.now() - toolStarted
         const err = error instanceof Error ? error.message : 'Tool execution failed'
         console.error('[jef] tool failed', toolName, err)
         toolActivities.push({

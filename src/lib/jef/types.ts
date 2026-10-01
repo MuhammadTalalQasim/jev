@@ -32,6 +32,15 @@ export type JefToolActivity = {
   error?: string
 }
 
+export type JefTiming = {
+  /** OpenRouter / LLM API time (ms). */
+  apiMs: number
+  /** Tejarify tool / data lookup time (ms). */
+  toolsMs: number
+  /** Full Jef agent processing time (ms). */
+  jefMs: number
+}
+
 export type JefAgentResult = {
   answer: string
   toolActivities: JefToolActivity[]
@@ -44,6 +53,7 @@ export type JefAgentResult = {
     costUsd: number
     costSource: 'openrouter' | 'estimate'
   }
+  timing: JefTiming
 }
 
 

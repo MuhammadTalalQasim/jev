@@ -11,6 +11,12 @@ type ToolActivity = {
   error?: string
 }
 
+type TimingBreakdown = {
+  apiMs: number
+  toolsMs: number
+  jefMs: number
+}
+
 type ChatMessage = {
   id: string
   role: "user" | "assistant"
@@ -18,6 +24,7 @@ type ChatMessage = {
   timestamp: string
   /** How long the request took, in milliseconds. */
   requestTimeMs?: number
+  timing?: TimingBreakdown
   /** Estimated or reported request cost in USD. */
   costUsd?: number
   totalTokens?: number
@@ -41,8 +48,8 @@ function formatTime(iso: string) {
   }
 }
 
-function formatRequestTime(ms?: number) {
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return null
+function formatDuration(ms?: number) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—"
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(ms >= 10_000 ? 0 : 1)}s`
 }
@@ -56,19 +63,14 @@ function formatCostUsd(cost?: number) {
   return `$${cost.toFixed(2)}`
 }
 
-function formatMeta(m: ChatMessage) {
-  if (m.role !== "assistant" || m.isLoading) {
-    return formatTime(m.timestamp)
+function compareLabel(timing: TimingBreakdown) {
+  if (timing.apiMs === timing.toolsMs) return "API ≈ Tools"
+  if (timing.apiMs > timing.toolsMs) {
+    const delta = timing.apiMs - timing.toolsMs
+    return `API +${formatDuration(delta)} vs Tools`
   }
-  const parts = [formatTime(m.timestamp)]
-  const duration = formatRequestTime(m.requestTimeMs)
-  const cost = formatCostUsd(m.costUsd)
-  if (duration) parts.push(duration)
-  if (cost) parts.push(cost)
-  if (typeof m.totalTokens === "number" && m.totalTokens > 0) {
-    parts.push(`${m.totalTokens.toLocaleString()} tok`)
-  }
-  return parts.join(" · ")
+  const delta = timing.toolsMs - timing.apiMs
+  return `Tools +${formatDuration(delta)} vs API`
 }
 
 function renderContent(text: string) {
@@ -153,6 +155,21 @@ export function JefChat() {
             : undefined
       const totalTokens =
         typeof data.usage?.totalTokens === "number" ? data.usage.totalTokens : undefined
+      const timing: TimingBreakdown | undefined =
+        data.timing &&
+        typeof data.timing.apiMs === "number" &&
+        typeof data.timing.toolsMs === "number" &&
+        typeof data.timing.jefMs === "number"
+          ? {
+              apiMs: data.timing.apiMs,
+              toolsMs: data.timing.toolsMs,
+              jefMs: data.timing.jefMs,
+            }
+          : {
+              apiMs: 0,
+              toolsMs: 0,
+              jefMs: requestTimeMs,
+            }
       const repliedAt = new Date().toISOString()
 
       if (!res.ok) {
@@ -167,6 +184,7 @@ export function JefChat() {
                   content: msg,
                   timestamp: repliedAt,
                   requestTimeMs,
+                  timing,
                   costUsd,
                   totalTokens,
                 }
@@ -186,6 +204,7 @@ export function JefChat() {
                 content: data.answer || "I couldn't find an answer.",
                 timestamp: repliedAt,
                 requestTimeMs,
+                timing,
                 costUsd,
                 totalTokens,
                 toolActivities: Array.isArray(data.toolActivities)
@@ -334,8 +353,42 @@ export function JefChat() {
                       renderContent(m.content)
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[11px] text-[var(--muted)]">
-                    <span>{formatMeta(m)}</span>
+                  <div className="flex flex-col gap-1 px-1">
+                    <div className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-[var(--muted)]">
+                      <span>{formatTime(m.timestamp)}</span>
+                      {m.role === "assistant" && !m.isLoading && formatCostUsd(m.costUsd) ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>{formatCostUsd(m.costUsd)}</span>
+                        </>
+                      ) : null}
+                      {m.role === "assistant" &&
+                      !m.isLoading &&
+                      typeof m.totalTokens === "number" &&
+                      m.totalTokens > 0 ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>{m.totalTokens.toLocaleString()} tok</span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    {m.role === "assistant" && !m.isLoading && m.timing ? (
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="rounded-md border border-[var(--line)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[var(--ink-soft)]">
+                          API {formatDuration(m.timing.apiMs)}
+                        </span>
+                        <span className="rounded-md border border-[var(--line)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[var(--ink-soft)]">
+                          Tools {formatDuration(m.timing.toolsMs)}
+                        </span>
+                        <span className="rounded-md border border-[var(--brand)]/20 bg-[var(--brand-soft)] px-2 py-0.5 text-[var(--brand)]">
+                          Jef {formatDuration(m.timing.jefMs)}
+                        </span>
+                        <span className="px-1 text-[var(--muted)]">
+                          {compareLabel(m.timing)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
